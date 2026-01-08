@@ -1,0 +1,6 @@
+/* 1. 针对所有链接去掉下划线 */
+a {
+  text-decoration: none;
+  color: inherit;
+  /* 让链接继承父级颜色，避免默认的蓝色 */
+}
