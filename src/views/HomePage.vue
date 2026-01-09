@@ -25,7 +25,7 @@
               :class="{ active: currentFileName === file }"
               @click="switchFile(file)"
             >
-              <span class="icon">📄</span> {{ file }}.md
+              <span class="icon">📄</span> {{ file }}
             </li>
           </ul>
         </div>
@@ -49,7 +49,6 @@ import { reactive, onMounted, ref, computed, watch } from "vue";
 import { MdPreview, MdCatalog } from "md-editor-v3";
 import "md-editor-v3/lib/preview.css";
 import { useThemeStore } from "@/stores/themeStore";
-import { useRoute } from "vue-router";
 import fm from "front-matter";
 import router from "@/router";
 import { ElMessage } from "element-plus";
@@ -58,16 +57,9 @@ const id = "preview-only";
 const rawText = ref(""); // 原始文本
 const attributes = ref<BlogAttributes | null>(null); // 元数据
 const ThemeStore = useThemeStore();
-const route = useRoute();
 const scrollElement = ref<HTMLElement | null>(null);
 const currentFileName = ref("");
-const fileList = ref<string[]>([
-  "test",
-  "我的第一篇文章",
-  "Vue3进阶指南",
-  "整数溢出判断",
-  "算法总结笔记",
-]);
+const fileList = ref<string[]>([]);
 interface BlogAttributes {
   title: string;
   date?: string;
@@ -78,6 +70,23 @@ interface BlogAttributes {
 const state = reactive({
   theme: computed(() => ThemeStore.theme),
 });
+// 获取所有文件列表
+const getFileList = async () => {
+  try {
+    const response = await fetch("http://localhost:3000/api/files");
+    if (!response.ok) throw new Error("网络响应不正常");
+    //解析JSON数据
+    const data = await response.json();
+    //将文件名称保存到 fileList 数组中
+    fileList.value = data.files;
+    //默认选择第一个文件
+    if (fileList.value.length > 0) {
+      currentFileName.value = fileList.value[0]!;
+    }
+  } catch (error) {
+    console.error("前端获取接口失败，请确认后端 Node.js 是否正在运行:", error);
+  }
+};
 
 //切换文件逻辑
 const switchFile = (fileName: string) => {
@@ -99,28 +108,16 @@ const pureText = computed(() => {
 const title = computed(() => attributes.value?.title || "未命名文章");
 const showCatalog = ref(true);
 
-// onMounted(async () => {
-//   scrollElement.value = document.documentElement;
-//   const file_name = route.query.fileName;
-//   try {
-//     const response = await fetch(`/files/${file_name}.md`);
-//     if (response.ok) {
-//       const content = await response.text();
-//       rawText.value = content;
-//       const result = fm<BlogAttributes>(content);
-//       attributes.value = result.attributes;
-//     }
-//   } catch (error) {
-//     console.error("读取失败:", error);
-//   }
-// });
+onMounted(() => {
+  getFileList();
+});
 // 监听文件名变化，重新加载内容
 watch(
   () => currentFileName.value,
   async (newName) => {
     if (!newName) return;
     try {
-      const response = await fetch(`/files/${newName}.md`);
+      const response = await fetch(`/files/${newName}`);
       if (response.ok) {
         const content = await response.text();
         rawText.value = content;
@@ -134,16 +131,6 @@ watch(
   },
   { immediate: true },
 );
-
-onMounted(() => {
-  // 初始化：优先读取 URL 中的 fileName，否则默认选第一个
-  const nameFromUrl = route.query.fileName;
-  if (typeof nameFromUrl === "string") {
-    currentFileName.value = nameFromUrl;
-  } else {
-    currentFileName.value = fileList.value[0] || "";
-  }
-});
 </script>
 
 <style lang="scss" scoped>
