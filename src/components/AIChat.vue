@@ -31,15 +31,6 @@
           src="https://pic.616pic.com/ys_bnew_img/00/54/97/9GArrbyNOm.jpg"
         />
       </div>
-      <div v-if="loading" class="message-row ai">
-        <el-avatar :size="36" src="https://api.dicebear.com/7.x/bottts/svg?seed=Gemini" />
-        <div class="message-content loading">
-          <el-icon class="is-loading">
-            <Loading />
-          </el-icon>
-          AI 正在思考中...
-        </div>
-      </div>
     </main>
 
     <footer class="chat-footer">
@@ -60,8 +51,7 @@
 <script setup lang="ts">
 import { ref, nextTick } from "vue";
 import { MdPreview } from "md-editor-v3";
-import { Loading } from "@element-plus/icons-vue";
-import { sendMessageToDS } from "../api/AIChatAPI.ts";
+import { sendMessageToDSStream } from "../api/AIChatAPI.ts";
 import { ElMessage } from "element-plus";
 
 interface Message {
@@ -72,7 +62,7 @@ interface Message {
 const inputMsg = ref("");
 const loading = ref(false);
 const chatScrollRef = ref<HTMLElement>();
-const chatList = ref<Message[]>([]);
+
 const messages = ref<Message[]>([
   { role: "assistant", content: "你好！我是你的 AI 助手，有什么可以帮你的吗？" },
 ]);
@@ -87,24 +77,39 @@ const scrollToBottom = async () => {
 
 const sendMessage = async () => {
   if (!inputMsg.value.trim() || loading.value) return;
-  //定义userMsg的类型为message
-  const userMsg: Message = { role: "user", content: inputMsg.value };
 
-  chatList.value.push(userMsg);
+  const userMsg: Message = { role: "user", content: inputMsg.value };
+  messages.value.push(userMsg);
+
+  // 1. 先在数组里占个座，放一条空的 AI 消息
+  const aiMsg: Message = { role: "assistant", content: "" };
+  messages.value.push(aiMsg);
+
+  const currentMsgIndex = messages.value.length - 1; // 记录这条消息的索引
+
   inputMsg.value = "";
   loading.value = true;
   await scrollToBottom();
+
   try {
-    //调用封装好的接口，传入整个对话历史
-    const aiMsg = await sendMessageToDS(messages.value);
-    //将AI回复存入列表
-    messages.value.push(aiMsg as Message);
+    // 2. 调用流式接口
+    const stream = sendMessageToDSStream(messages.value.slice(0, -1)); // 排除掉刚加的那条空消息
+
+    for await (const chunk of stream) {
+      // 3. 实时追加内容到最后一条消息
+      const targetMessage = messages.value[currentMsgIndex];
+      if (targetMessage && typeof chunk === "string") {
+        targetMessage.content += chunk;
+        // 4. 每收到一个字就尝试滚动到底部
+        scrollToBottom();
+      }
+    }
   } catch (error) {
-    ElMessage.error("请求失败");
-    console.error("请求失败:", error);
+    ElMessage.error("流式请求失败");
+    console.log(error);
   } finally {
+    loading.value = false;
   }
-  loading.value = false;
 };
 
 const clearMessages = () => {
@@ -160,9 +165,10 @@ const clearMessages = () => {
         flex-direction: row;
 
         .message-content {
-          background-color: #409eff;
-          color: white;
-          border-radius: 12px 2px 12px 12px;
+          background-color: #fff;
+          color: #333;
+          border-radius: 2px 12px 12px 12px;
+          border: 1px solid #ebeef5;
         }
       }
 

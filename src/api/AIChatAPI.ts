@@ -8,7 +8,6 @@ interface ChatMessage {
 }
 
 // 2. 初始化实例
-// 注意：Vite 环境下读取环境变量用 import.meta.env
 const openai = new OpenAI({
   baseURL: "https://api.deepseek.com",
   apiKey: "sk-a76da3b7fd33458aaa94fd2af3d7acf2",
@@ -19,28 +18,40 @@ const openai = new OpenAI({
  * 封装聊天接口
  * @param messages 历史对话列表，类型为 ChatMessage 数组
  */
-export const sendMessageToDS = async (messages: ChatMessage[]) => {
+export const sendMessageToDSStream = async function* (messages: ChatMessage[]) {
   try {
-    const completion = await openai.chat.completions.create({
-      messages: [{ role: "system", content: "你是一位专业的计算机程序员。" }, ...messages],
+    const stream = await openai.chat.completions.create({
+      messages: [
+        {
+          role: "system",
+          content:
+            "你是一位专业的计算机考研辅导老师，擅长用表格总结知识点。在回答时，请尽可能详尽且符合数二/专业课考纲。",
+        },
+        ...messages,
+      ],
       model: "deepseek-chat",
+      stream: true, // 核心：开启流式传输模式
     });
 
-    // 解决报错 1：通过 Optional Chaining (?.) 确保 choices[0] 存在
-    const firstChoice = completion.choices?.[0];
-
-    if (!firstChoice || !firstChoice.message) {
-      throw new Error("API 返回数据为空");
+    // 使用 for await...of 循环处理异步流
+    for await (const chunk of stream) {
+      // 解决之前你遇到的“对象可能未定义”和“null 类型不兼容”问题
+      const content = chunk.choices[0]?.delta?.content ?? "";
+      if (content) {
+        yield content; // 将每一块字符推送到前端
+      }
     }
-
-    // 解决报错 2：将可能为 null 的 content 强制转为 string
-    // 使用 ?? "" 表示：如果前面是 null/undefined，就取空字符串 ""
-    return {
-      role: firstChoice.message.role,
-      content: firstChoice.message.content ?? "",
-    };
-  } catch (error) {
-    console.error("DeepSeek API 请求失败:", error);
+  } catch (error: unknown) {
+    // 针对你之前遇到的 402 余额不足错误进行捕获
+    // 使用类型守卫检查 error 是否包含 status 属性
+    if (error && typeof error === "object" && "status" in error) {
+      const apiError = error as { status: number }; // 局部断言
+      if (apiError.status === 402) {
+        console.error("DeepSeek API 报错：账户余额不足，请检查后台充值状态。");
+      }
+    } else {
+      console.error("流式请求过程中发生错误:", error);
+    }
     throw error;
   }
 };
