@@ -1,7 +1,5 @@
-<script setup lang="ts"></script>
-
 <template>
-  <el-page-header icon="">
+  <el-page-header icon="" @back="goBack">
     <template #content>
       <div class="flex items-center">
         <el-avatar
@@ -34,4 +32,7 @@
 
 <script setup lang="ts">
 import MenuCom from "@/components/MenuCom.vue";
+const goBack = () => {
+  window.history.back();
+};
 </script>
